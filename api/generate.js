@@ -1,10 +1,18 @@
 module.exports = async function (req, res) {
-    // ==============================
+
+    // ==========================================
     // CORS
-    // ==============================
+    // ==========================================
+
     res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.setHeader(
+        "Access-Control-Allow-Methods",
+        "POST, OPTIONS"
+    );
+    res.setHeader(
+        "Access-Control-Allow-Headers",
+        "Content-Type"
+    );
 
     if (req.method === "OPTIONS") {
         return res.status(200).end();
@@ -16,307 +24,489 @@ module.exports = async function (req, res) {
         });
     }
 
-    // ==============================
-    // SEMUA ERROR DITANGKAP
-    // ==============================
+
+    // ==========================================
+    // MAIN
+    // ==========================================
+
     try {
 
-        console.log("[ROBILD] Function started");
+        console.log("[ROBILD] Request masuk");
 
-        // ==============================
+
+        // ==========================================
         // API KEY
-        // ==============================
-        var API_KEY = process.env.AI_API_KEY;
+        // ==========================================
+
+        const API_KEY = process.env.AI_API_KEY;
 
         if (!API_KEY) {
-            console.error("[ROBILD] AI_API_KEY tidak ditemukan");
 
-            return res.status(200).json({
-                code: "return",
-                message: "❌ AI_API_KEY belum dipasang di Vercel."
+            console.error(
+                "[ROBILD] AI_API_KEY tidak ditemukan"
+            );
+
+            return res.status(500).json({
+                error:
+                    "AI_API_KEY belum dipasang di Vercel."
             });
         }
 
-        console.log("[ROBILD] API key ditemukan");
 
-        // ==============================
-        // BODY
-        // ==============================
-        var body = req.body;
+        // ==========================================
+        // PROMPT DARI ROBLOX
+        // ==========================================
 
-        if (!body) {
-            return res.status(200).json({
-                code: "return",
-                message: "❌ Request body kosong."
-            });
-        }
+        const body = req.body || {};
 
-        var prompt = body.prompt;
+        const prompt =
+            typeof body.prompt === "string"
+                ? body.prompt.trim()
+                : "";
+
 
         if (!prompt) {
-            return res.status(200).json({
-                code: "return",
-                message: "❌ Prompt kosong."
+
+            return res.status(400).json({
+                error: "Prompt kosong."
             });
         }
 
-        console.log("[ROBILD] Prompt:", prompt);
 
-        // ==============================
-        // GEMINI
-        // ==============================
-        var MODEL = "gemini-3.5-flash-lite";
+        console.log(
+            "[ROBILD] Prompt:",
+            prompt
+        );
 
-        var URL =
+
+        // ==========================================
+        // GEMINI MODEL
+        // ==========================================
+
+        const MODEL = "gemini-3.6-flash";
+
+        const URL =
             "https://generativelanguage.googleapis.com/v1beta/models/" +
             MODEL +
             ":generateContent";
 
-        // ==============================
-        // SYSTEM PROMPT
-        // ==============================
-        var systemPrompt = `
-You are Robild, an AI assistant inside a Roblox game.
 
-The player sends commands to you.
+        // ==========================================
+        // SYSTEM INSTRUCTION
+        // ==========================================
 
-Player request:
-${prompt}
+        const systemPrompt = `
+Kamu adalah Robild.
 
-Your job is to generate Roblox Luau code.
+Robild adalah AI assistant yang berada di dalam game Roblox.
 
-RULES:
+Robild mempunyai DUA kemampuan utama:
 
-1. Always return valid executable Roblox Luau.
-2. Do not use Markdown.
-3. Do not use code fences.
-4. Do not explain the code.
-5. Return ONLY Luau code.
-6. If the player asks to create a Part, create it.
-7. If the player asks to create multiple objects, create them.
-8. Create a Model named AI_Build.
-9. Parent AI_Build to workspace.
-10. Put created objects inside AI_Build.
-11. Every BasePart must have Anchored = true.
-12. Build around Vector3.new(0, 10, 0).
-13. Use only real Roblox Luau APIs.
+1. CHAT
+2. MEMBUAT / MENGUBAH OBJECT DI ROBLOX
 
-If the player only says something like "test", return:
+Kamu harus menentukan apakah permintaan pemain membutuhkan kode Roblox atau tidak.
 
-return
+========================================
+CHAT
+========================================
+
+Kalau pemain hanya bertanya atau ngobrol:
+
+Contoh:
+
+"halo"
+"siapa kamu?"
+"apa itu Roblox?"
+"jelaskan Vector3"
+"berapa 2 + 2?"
+"apa yang bisa kamu lakukan?"
+
+Maka:
+
+execute = false
+
+Dan:
+
+code = ""
+
+Jawab pemain secara normal, ramah, jelas dan singkat.
+
+========================================
+BUILD / CODE
+========================================
+
+Kalau pemain meminta Robild membuat sesuatu di Roblox:
+
+Contoh:
+
+"buatkan part"
+"buat balok"
+"buat rumah"
+"buat pohon"
+"buat mobil"
+"buat pedang"
+"buat lantai"
+"buat meja"
+"buat script pintu otomatis"
+"buat sistem teleport"
+"buat NPC"
+"buat model"
+
+Maka:
+
+execute = true
+
+Dan code harus berisi Luau Roblox yang valid.
+
+========================================
+ATURAN KODE
+========================================
+
+Kode akan dijalankan oleh ServerScript Roblox.
+
+Untuk object:
+
+- Gunakan Instance.new
+- Gunakan workspace
+- Buat Model bernama AI_Build
+- Parent Model ke workspace
+- Semua BasePart harus Anchored = true
+- Gunakan posisi sekitar Vector3.new(0, 10, 0)
+- Masukkan object yang dibuat ke AI_Build
+- Jangan menggunakan kode Markdown
+- Jangan menggunakan ```lua
+- Jangan menggunakan ``` 
+- Jangan memberikan penjelasan di dalam code
+- Code harus executable Luau
+
+Contoh untuk "buatkan part":
+
+local model = Instance.new("Model")
+model.Name = "AI_Build"
+model.Parent = workspace
+
+local part = Instance.new("Part")
+part.Name = "GeneratedPart"
+part.Size = Vector3.new(6, 2, 6)
+part.Position = Vector3.new(0, 10, 0)
+part.Anchored = true
+part.Parent = model
+
+========================================
+RESPON
+========================================
+
+Selalu kembalikan JSON dengan format:
+
+{
+  "reply": "jawaban untuk pemain",
+  "execute": false,
+  "code": ""
+}
+
+atau:
+
+{
+  "reply": "Penjelasan singkat tentang apa yang dibuat",
+  "execute": true,
+  "code": "KODE LUAU"
+}
+
+PENTING:
+
+- reply adalah pesan yang akan muncul di chat Robild.
+- execute menentukan apakah Roblox harus menjalankan code.
+- code kosong jika tidak perlu menjalankan kode.
+- Jangan masukkan Markdown.
+- Jangan masukkan JSON di dalam string.
+- Selalu berikan JSON valid.
 `;
 
-        // ==============================
-        // ABORT CONTROLLER
-        // ==============================
-        var controller = new AbortController();
 
-        var timeout = setTimeout(function () {
-            controller.abort();
-        }, 8000);
-
-        console.log("[ROBILD] Menghubungi Gemini...");
-
-        // ==============================
+        // ==========================================
         // REQUEST GEMINI
-        // ==============================
-        var geminiResponse;
+        // ==========================================
 
-        try {
+        const response = await fetch(URL, {
 
-            geminiResponse = await fetch(URL, {
-                method: "POST",
+            method: "POST",
 
-                headers: {
-                    "Content-Type": "application/json",
-                    "x-goog-api-key": API_KEY
-                },
+            headers: {
 
-                body: JSON.stringify({
-                    contents: [
-                        {
-                            role: "user",
-                            parts: [
-                                {
-                                    text: systemPrompt
-                                }
-                            ]
-                        }
-                    ]
-                }),
+                "Content-Type":
+                    "application/json",
 
-                signal: controller.signal
-            });
+                "x-goog-api-key":
+                    API_KEY
 
-        } finally {
+            },
 
-            clearTimeout(timeout);
+            body: JSON.stringify({
 
-        }
+                contents: [
+
+                    {
+                        role: "user",
+
+                        parts: [
+
+                            {
+                                text:
+                                    systemPrompt +
+                                    "\n\nPLAYER REQUEST:\n" +
+                                    prompt
+                            }
+
+                        ]
+                    }
+
+                ],
+
+                generationConfig: {
+
+                    responseMimeType:
+                        "application/json"
+
+                }
+
+            })
+
+        });
+
+
+        // ==========================================
+        // RESPONSE GEMINI
+        // ==========================================
+
+        const rawText =
+            await response.text();
+
 
         console.log(
-            "[ROBILD] Gemini HTTP:",
-            geminiResponse.status
+            "[ROBILD] Gemini status:",
+            response.status
         );
 
-        // ==============================
-        // BACA RESPONSE
-        // ==============================
-        var rawText = await geminiResponse.text();
 
-        console.log(
-            "[ROBILD] Gemini response diterima"
-        );
-
-        var data;
-
-        try {
-
-            data = JSON.parse(rawText);
-
-        } catch (jsonError) {
+        if (!response.ok) {
 
             console.error(
-                "[ROBILD] Gemini mengirim response bukan JSON:",
+                "[ROBILD] Gemini error:",
                 rawText
             );
 
             return res.status(200).json({
-                code: "return",
-                message:
-                    "❌ Gemini mengirim response yang tidak valid."
-            });
-        }
 
-        // ==============================
-        // GEMINI ERROR
-        // ==============================
-        if (!geminiResponse.ok) {
-
-            console.error(
-                "[ROBILD] Gemini Error:",
-                JSON.stringify(data)
-            );
-
-            return res.status(200).json({
-                code: "return",
-                message:
-                    "❌ Gemini Error " +
-                    geminiResponse.status +
+                error:
+                    "Gemini Error " +
+                    response.status +
                     ": " +
-                    (
-                        data &&
-                        data.error &&
-                        data.error.message
-                            ? data.error.message
-                            : "Unknown Gemini error"
-                    )
+                    rawText
+
             });
         }
 
-        // ==============================
-        // AMBIL CANDIDATE
-        // ==============================
-        var candidate =
-            data &&
-            data.candidates &&
-            data.candidates[0];
 
-        if (!candidate) {
+        // ==========================================
+        // PARSE RESPONSE
+        // ==========================================
+
+        let geminiData;
+
+        try {
+
+            geminiData =
+                JSON.parse(rawText);
+
+        } catch (err) {
 
             console.error(
-                "[ROBILD] Candidate tidak ditemukan:",
-                JSON.stringify(data)
+                "[ROBILD] Response Gemini bukan JSON:",
+                rawText
             );
 
             return res.status(200).json({
-                code: "return",
-                message:
-                    "❌ Gemini tidak mengembalikan candidate."
+
+                error:
+                    "Gemini mengirim response yang bukan JSON."
+
             });
         }
 
-        // ==============================
-        // AMBIL TEXT
-        // ==============================
-        var parts =
-            candidate.content &&
-            candidate.content.parts
-                ? candidate.content.parts
-                : [];
 
-        var result = "";
+        // ==========================================
+        // AMBIL TEXT GEMINI
+        // ==========================================
 
-        for (var i = 0; i < parts.length; i++) {
+        const candidate =
+            geminiData
+                ?.candidates
+                ?.[
+                    0
+                ];
+
+        const parts =
+            candidate
+                ?.content
+                ?.parts || [];
+
+
+        let aiText = "";
+
+        for (
+            const part
+            of parts
+        ) {
 
             if (
-                parts[i] &&
-                typeof parts[i].text === "string"
+                part &&
+                typeof part.text === "string"
             ) {
 
-                result += parts[i].text;
+                aiText +=
+                    part.text;
+
             }
+
         }
 
-        result = result.trim();
 
-        // ==============================
-        // TIDAK ADA TEXT
-        // ==============================
-        if (!result) {
+        aiText =
+            aiText.trim();
+
+
+        if (!aiText) {
 
             console.error(
-                "[ROBILD] Gemini tidak memberikan text:",
-                JSON.stringify(data)
+                "[ROBILD] Gemini tidak memberikan text."
             );
 
             return res.status(200).json({
-                code: "return",
-                message:
-                    "❌ Gemini tidak menghasilkan kode."
+
+                error:
+                    "Gemini tidak memberikan jawaban."
+
             });
         }
 
-        // ==============================
-        // BERSIHKAN MARKDOWN
-        // ==============================
-        result = result
+
+        // ==========================================
+        // PARSE JSON HASIL AI
+        // ==========================================
+
+        let result;
+
+        try {
+
+            result =
+                JSON.parse(aiText);
+
+        } catch (err) {
+
+            console.error(
+                "[ROBILD] JSON AI invalid:",
+                aiText
+            );
+
+            return res.status(200).json({
+
+                error:
+                    "Format jawaban Robild tidak valid.",
+
+                raw:
+                    aiText
+
+            });
+        }
+
+
+        // ==========================================
+        // VALIDASI
+        // ==========================================
+
+        const reply =
+            typeof result.reply === "string"
+                ? result.reply
+                : "Sip bro!";
+
+        const execute =
+            result.execute === true;
+
+        let code =
+            typeof result.code === "string"
+                ? result.code
+                : "";
+
+
+        // ==========================================
+        // BERSIHKAN CODE
+        // ==========================================
+
+        code = code
             .replace(/^```lua\s*/i, "")
             .replace(/^```luau\s*/i, "")
             .replace(/^```\s*/i, "")
             .replace(/\s*```$/i, "")
             .trim();
 
-        // ==============================
-        // SUKSES
-        // ==============================
-        console.log("[ROBILD] Gemini berhasil.");
+
+        // Kalau execute false,
+        // jangan pernah mengirim code.
+
+        if (!execute) {
+            code = "";
+        }
+
+
+        // ==========================================
+        // RESPONSE KE ROBLOX
+        // ==========================================
+
+        console.log(
+            "[ROBILD] Execute:",
+            execute
+        );
+
+        console.log(
+            "[ROBILD] Code length:",
+            code.length
+        );
+
 
         return res.status(200).json({
-            code: result,
-            message: "Robild berhasil memproses: " + prompt
+
+            reply:
+                reply,
+
+            execute:
+                execute,
+
+            code:
+                code
+
         });
+
 
     } catch (error) {
 
-        // ==============================
-        // ERROR TERAKHIR
-        // ==============================
+        // ==========================================
+        // CRASH HANDLER
+        // ==========================================
+
         console.error(
-            "[ROBILD] CRASH:",
+            "[ROBILD] SERVER ERROR:",
             error
         );
 
-        return res.status(200).json({
-            code: "return",
-            message:
-                "❌ Robild API Error: " +
-                (
-                    error &&
-                    error.message
-                        ? error.message
-                        : String(error)
-                )
+        return res.status(500).json({
+
+            error:
+                error?.message ||
+                String(error)
+
         });
+
     }
+
 };
