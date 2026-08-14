@@ -28,8 +28,8 @@ Rules:
 3. Always set Anchored = true for all created parts.
 4. Output ONLY raw executable Luau code text. DO NOT wrap in markdown formatting (NO \`\`\`lua or \`\`\`), DO NOT add intro/outro comments or explanations.`;
 
-        // MENGGUNAKAN GEMINI 3.1 FLASH
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash:generateContent?key=${API_KEY}`;
+        // MODEL ID RESMI GOOGLE API
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${API_KEY}`;
 
         const response = await fetch(url, {
             method: 'POST',
@@ -59,7 +59,7 @@ Rules:
             return res.status(500).json({ error: "Gemini tidak mengembalikan teks kode." });
         }
 
-        // Bersihkan formatting markdown jika ada
+        // Bersihkan formatting markdown
         let luauCode = candidateText.replace(/```lua/g, '').replace(/```/g, '').trim();
 
         return res.status(200).json({ code: luauCode, message: "Sip bro, udah gue buat ya!" });
