@@ -6,12 +6,10 @@ module.exports = async (req, res) => {
     res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-    // Handle preflight
     if (req.method === "OPTIONS") {
         return res.status(200).end();
     }
 
-    // Only POST allowed
     if (req.method !== "POST") {
         return res.status(405).json({
             error: "Method Not Allowed"
@@ -26,21 +24,18 @@ module.exports = async (req, res) => {
 
         if (!API_KEY) {
             return res.status(500).json({
-                error: "AI_API_KEY belum dipasang di Vercel Environment Variables."
+                error: "AI_API_KEY belum dipasang di Vercel."
             });
         }
 
         // =========================
-        // REQUEST BODY
+        // PROMPT
         // =========================
-        const body = req.body || {};
-        const prompt = typeof body.prompt === "string"
-            ? body.prompt.trim()
-            : "";
+        const { prompt } = req.body || {};
 
-        if (!prompt) {
+        if (!prompt || typeof prompt !== "string") {
             return res.status(400).json({
-                error: "Prompt tidak boleh kosong."
+                error: "Prompt kosong atau tidak valid."
             });
         }
 
@@ -48,40 +43,40 @@ module.exports = async (req, res) => {
         // SYSTEM PROMPT
         // =========================
         const systemPrompt = `
-You are Robild, a Roblox Luau code generator.
+You are Robild, an AI Roblox Luau code generator.
 
-Your task is to generate valid executable Roblox Luau code that creates 3D objects based on the user's request.
+The user will give you a command describing something they want created or changed in Roblox.
+
+Your job is to generate valid executable Roblox Luau code.
 
 Rules:
-
-1. Create a Model using Instance.new("Model").
-2. The Model MUST be named "AI_Build".
-3. Parent AI_Build to workspace.
-4. All created Parts must be parented to AI_Build.
-5. Every created BasePart must have Anchored = true.
-6. Position the build around Vector3.new(0, 10, 0), unless another position is explicitly requested.
-7. Use valid Roblox Luau APIs only.
-8. Do not use fake Roblox APIs.
-9. Do not use require() with external asset IDs.
-10. Do not create scripts that execute arbitrary external code.
-11. The output must be directly executable inside Roblox Studio.
-12. Output ONLY raw Luau code.
-13. Do NOT use Markdown.
-14. Do NOT wrap the code in \`\`\`lua.
-15. Do NOT explain the code.
-16. Do NOT add introductory or ending text.
+1. Create all generated objects inside a Model named "AI_Build".
+2. AI_Build must be parented to workspace.
+3. All created BaseParts must have Anchored = true.
+4. Put the build around Vector3.new(0, 10, 0).
+5. Use valid Roblox Luau syntax.
+6. Do not use Markdown.
+7. Do not use code fences.
+8. Do not explain anything.
+9. Return ONLY executable Luau code.
 
 User request:
 ${prompt}
 `;
 
         // =========================
-        // GEMINI API
+        // GEMINI
         // =========================
-        const model = "gemini-3.6-flash";
+
+        // Ganti bagian MODEL ini jika menggunakan
+        // model Gemini lain yang tersedia di project/API key lu.
+        const MODEL = "gemini-2.5-flash";
 
         const url =
-            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(API_KEY)}`;
+            "https://generativelanguage.googleapis.com/v1beta/models/" +
+            MODEL +
+            ":generateContent?key=" +
+            encodeURIComponent(API_KEY);
 
         const response = await fetch(url, {
             method: "POST",
@@ -102,45 +97,40 @@ ${prompt}
             })
         });
 
-        // =========================
-        // READ GOOGLE RESPONSE
-        // =========================
         const data = await response.json();
 
+        // =========================
+        // GEMINI ERROR
+        // =========================
         if (!response.ok) {
             console.error("Gemini API Error:", data);
 
             return res.status(response.status).json({
                 error:
                     data?.error?.message ||
-                    "Gemini API mengembalikan error.",
-                status: response.status
+                    "Gemini API Error"
             });
         }
 
         // =========================
-        // GET GENERATED TEXT
+        // AMBIL HASIL GEMINI
         // =========================
-        const candidate = data?.candidates?.[0];
-
-        const parts = candidate?.content?.parts || [];
-
-        const candidateText = parts
-            .map(part => part?.text || "")
-            .join("")
-            .trim();
+        const candidateText =
+            data?.candidates?.[0]?.content?.parts
+                ?.map(part => part?.text || "")
+                .join("")
+                .trim();
 
         if (!candidateText) {
-            console.error("Empty Gemini response:", data);
+            console.error("Gemini tidak mengembalikan text:", data);
 
             return res.status(500).json({
-                error: "Gemini tidak mengembalikan kode Luau.",
-                raw: data
+                error: "Gemini tidak mengembalikan kode."
             });
         }
 
         // =========================
-        // CLEAN MARKDOWN
+        // BERSIHKAN CODE FENCE
         // =========================
         let luauCode = candidateText
             .replace(/^```(?:lua|luau)?\s*/i, "")
@@ -151,13 +141,13 @@ ${prompt}
         // RESPONSE
         // =========================
         return res.status(200).json({
-            success: true,
             code: luauCode,
-            message: "Sip bro, kode Roblox berhasil dibuat!"
+            message: "Sip bro, udah gue buat ya!"
         });
 
     } catch (err) {
-        console.error("Server Error:", err);
+
+        console.error("generate.js error:", err);
 
         return res.status(500).json({
             error: err?.message || "Internal Server Error"
