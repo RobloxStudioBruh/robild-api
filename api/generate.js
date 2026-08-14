@@ -18,7 +18,7 @@ Rules:
 4. Output ONLY raw executable Luau code text. DO NOT wrap in markdown formatting (NO \`\`\`lua or \`\`\`), DO NOT add intro/outro comments or explanations.`;
 
         const response = await axios.post(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`,
             {
                 contents: [{
                     parts: [{ text: `${systemPrompt}\n\nUser Prompt: ${prompt}` }]
@@ -35,4 +35,3 @@ Rules:
         return res.status(500).json({ error: "Gagal memproses AI" });
     }
 };
-
