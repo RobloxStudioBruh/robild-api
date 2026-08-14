@@ -1,465 +1,267 @@
-module.exports = async function (req, res) {
-
-    // ==============================
+module.exports = async (req, res) => {
+    // ================================
     // CORS
-    // ==============================
-
+    // ================================
     res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader(
-        "Access-Control-Allow-Methods",
-        "POST, OPTIONS"
-    );
-    res.setHeader(
-        "Access-Control-Allow-Headers",
-        "Content-Type"
-    );
+    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
+    // Roblox/Vercel kadang melakukan OPTIONS
     if (req.method === "OPTIONS") {
         return res.status(200).end();
     }
 
+    // Hanya menerima POST
     if (req.method !== "POST") {
         return res.status(405).json({
             error: "Method Not Allowed"
         });
     }
 
-
     try {
+        // ================================
+        // AMBIL PROMPT
+        // ================================
+        const body = req.body || {};
+        const prompt = typeof body.prompt === "string"
+            ? body.prompt.trim()
+            : "";
 
-        console.log("[ROBILD] Request masuk");
+        if (!prompt) {
+            return res.status(400).json({
+                error: "Prompt kosong."
+            });
+        }
 
-
-        // ==============================
+        // ================================
         // API KEY
-        // ==============================
-
+        // ================================
         const API_KEY = process.env.AI_API_KEY;
 
         if (!API_KEY) {
-
-            console.error(
-                "[ROBILD] AI_API_KEY tidak ditemukan"
-            );
-
-            return res.status(200).json({
-                code: "return",
-                message: "❌ AI_API_KEY belum dipasang di Vercel."
+            return res.status(500).json({
+                error: "AI_API_KEY belum dipasang di Vercel Environment Variables."
             });
         }
 
+        // ================================
+        // SYSTEM PROMPT ROBILD
+        // ================================
+        const systemPrompt = `
+You are Robild, an AI assistant inside a Roblox game.
 
-        // ==============================
-        // PROMPT
-        // ==============================
+You have TWO main jobs:
 
-        const body = req.body || {};
+1. CHAT
+If the user asks a normal question, answer naturally and clearly.
+You can explain Roblox, Lua, programming, game development, ideas, etc.
 
-        const prompt =
-            typeof body.prompt === "string"
-                ? body.prompt.trim()
-                : "";
+2. BUILD / CODE
+If the user asks you to create something inside Roblox,
+generate executable Roblox Luau code.
 
+Examples:
+- "buat part"
+- "buat rumah"
+- "buat pedang"
+- "buat mobil"
+- "buat pintu"
+- "buat NPC"
+- "buat sistem uang"
+- "buat script"
+- "buat obby"
+- "buat map"
 
-        if (!prompt) {
+IMPORTANT RULES FOR BUILD REQUESTS:
 
-            return res.status(200).json({
-                code: "return",
-                message: "❌ Prompt kosong, bro."
-            });
-        }
+- Return ONLY executable Luau code.
+- Do NOT use markdown code fences.
+- Do NOT write explanations before or after the code.
+- The code must be compatible with Roblox Luau.
+- Created objects should normally be placed in Workspace.
+- Use Instance.new when creating Roblox instances.
+- Anchor static building parts.
+- Avoid deprecated Roblox APIs.
+- Do not use require() with unknown asset IDs.
+- Do not create malicious, destructive, or exploit code.
+- Keep generated code self-contained whenever possible.
 
+For BUILD requests, create a Model named "AI_Build"
+and parent it to workspace.
 
-        console.log(
-            "[ROBILD] Prompt:",
-            prompt
-        );
+For normal CHAT requests, return normal text.
 
+The user request is:
+${prompt}
+        `.trim();
 
-        // ==============================
-        // GEMINI
-        // ==============================
-
-        const model = "gemini-2.5-flash";
+        // ================================
+        // GEMINI MODEL
+        // ================================
+        //
+        // Gemini 2.0 sudah shutdown.
+        // Gunakan model yang masih aktif.
+        //
+        const model = "gemini-3.5-flash";
 
         const url =
-            "https://generativelanguage.googleapis.com/v1beta/models/" +
-            model +
-            ":generateContent";
+            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(API_KEY)}`;
 
-
-        // ==============================
-        // INSTRUKSI ROBILD
-        // ==============================
-
-        const instruction = `
-Kamu adalah Robild, AI assistant di dalam game Roblox.
-
-Kamu bisa melakukan dua hal:
-
-1. Menjawab pertanyaan seperti chatbot AI.
-2. Membuat sesuatu di Roblox menggunakan Luau.
-
-PENTING:
-
-Jika user hanya ngobrol atau bertanya:
-
-Contoh:
-- halo
-- siapa kamu
-- apa itu Roblox
-- jelaskan Vector3
-- bagaimana cara membuat game
-
-Maka jangan membuat object.
-
-Gunakan:
-
-{
-  "reply": "jawaban kamu",
-  "execute": false,
-  "code": ""
-}
-
-Jika user meminta membuat sesuatu di Roblox:
-
-Contoh:
-- buat part
-- buat rumah
-- buat meja
-- buat pohon
-- buat mobil
-- buat pedang
-- buat model
-- buat sistem
-- buat script
-
-Gunakan:
-
-{
-  "reply": "penjelasan singkat",
-  "execute": true,
-  "code": "kode Luau"
-}
-
-ATURAN KODE:
-
-- Gunakan Roblox Luau yang valid.
-- Jangan gunakan Markdown.
-- Jangan gunakan ```lua.
-- Jangan gunakan ``` .
-- Untuk object baru, buat Model bernama AI_Build.
-- Parent AI_Build ke workspace.
-- Masukkan object yang dibuat ke AI_Build.
-- Semua BasePart harus Anchored = true.
-- Gunakan posisi sekitar Vector3.new(0,10,0).
-- Jangan membuat kode yang berbahaya.
-- Jangan menghapus seluruh workspace.
-- Jangan mengubah data penting game.
-- Code harus langsung bisa dijalankan oleh loadstring Roblox.
-
-CONTOH jika user mengatakan:
-
-"buatkan part"
-
-code harus kira-kira seperti:
-
-local model = Instance.new("Model")
-model.Name = "AI_Build"
-model.Parent = workspace
-
-local part = Instance.new("Part")
-part.Name = "GeneratedPart"
-part.Size = Vector3.new(6,2,6)
-part.Position = Vector3.new(0,10,0)
-part.Anchored = true
-part.Parent = model
-
-Kembalikan HANYA JSON valid.
-
-Jangan memberikan teks di luar JSON.
-`;
-
-
-        // ==============================
-        // REQUEST
-        // ==============================
-
-        const response = await fetch(url, {
-
+        // ================================
+        // REQUEST KE GOOGLE
+        // ================================
+        const googleResponse = await fetch(url, {
             method: "POST",
 
             headers: {
-
-                "Content-Type": "application/json",
-
-                "x-goog-api-key": API_KEY
-
+                "Content-Type": "application/json"
             },
 
             body: JSON.stringify({
-
                 contents: [
-
                     {
                         role: "user",
-
                         parts: [
-
                             {
-                                text:
-                                    instruction +
-                                    "\n\nUSER:\n" +
-                                    prompt
+                                text: systemPrompt
                             }
-
                         ]
                     }
-
-                ],
-
-                generationConfig: {
-
-                    responseMimeType: "application/json"
-
-                }
-
+                ]
             })
-
         });
 
+        // ================================
+        // BACA RESPONSE
+        // ================================
+        const responseText = await googleResponse.text();
 
-        // ==============================
-        // RESPONSE GEMINI
-        // ==============================
-
-        const raw = await response.text();
-
-        console.log(
-            "[ROBILD] Gemini status:",
-            response.status
-        );
-
-
-        if (!response.ok) {
-
-            console.error(
-                "[ROBILD] Gemini ERROR:",
-                raw
-            );
-
-            return res.status(200).json({
-
-                code: "return",
-
-                message:
-                    "❌ Gemini Error " +
-                    response.status +
-                    ": " +
-                    raw
-
-            });
-        }
-
-
-        // ==============================
-        // PARSE RESPONSE GEMINI
-        // ==============================
-
-        let gemini;
+        let data;
 
         try {
+            data = JSON.parse(responseText);
+        } catch (parseError) {
+            console.error("Google returned non-JSON:", responseText);
 
-            gemini = JSON.parse(raw);
-
-        } catch (error) {
-
-            console.error(
-                "[ROBILD] Gemini bukan JSON:",
-                raw
-            );
-
-            return res.status(200).json({
-
-                code: "return",
-
-                message:
-                    "❌ Response Gemini tidak valid."
-
+            return res.status(502).json({
+                error: "Google API mengembalikan response yang bukan JSON.",
+                raw: responseText.slice(0, 1000)
             });
         }
 
-
-        // ==============================
-        // AMBIL TEXT
-        // ==============================
-
-        let aiText = "";
-
-        if (
-            gemini.candidates &&
-            gemini.candidates[0] &&
-            gemini.candidates[0].content &&
-            gemini.candidates[0].content.parts
-        ) {
-
-            const parts =
-                gemini.candidates[0].content.parts;
-
-            for (let i = 0; i < parts.length; i++) {
-
-                if (
-                    parts[i] &&
-                    typeof parts[i].text === "string"
-                ) {
-
-                    aiText += parts[i].text;
-
-                }
-
-            }
-
-        }
-
-
-        aiText = aiText.trim();
-
-
-        if (!aiText) {
-
+        // ================================
+        // GOOGLE ERROR
+        // ================================
+        if (!googleResponse.ok) {
             console.error(
-                "[ROBILD] Gemini tidak mengirim text:",
-                raw
+                "Google API Error:",
+                googleResponse.status,
+                data
             );
 
-            return res.status(200).json({
-
-                code: "return",
-
-                message:
-                    "❌ Gemini tidak memberikan jawaban."
-
+            return res.status(googleResponse.status).json({
+                error:
+                    data?.error?.message ||
+                    "Google Gemini API Error.",
+                status: googleResponse.status
             });
         }
 
+        // ================================
+        // AMBIL TEXT GEMINI
+        // ================================
+        const candidate =
+            data?.candidates?.[0];
 
-        // ==============================
-        // PARSE JSON AI
-        // ==============================
+        const parts =
+            candidate?.content?.parts || [];
 
-        let result;
+        const generatedText = parts
+            .map(part => part?.text || "")
+            .join("")
+            .trim();
 
-        try {
-
-            result = JSON.parse(aiText);
-
-        } catch (error) {
-
+        // ================================
+        // CEK RESPONSE KOSONG
+        // ================================
+        if (!generatedText) {
             console.error(
-                "[ROBILD] JSON AI error:",
-                aiText
+                "Gemini returned no text:",
+                JSON.stringify(data)
             );
 
-            return res.status(200).json({
-
-                code: "return",
-
-                message:
-                    aiText
-
+            return res.status(502).json({
+                error: "Gemini tidak mengembalikan teks.",
+                details: data
             });
         }
 
-
-        // ==============================
-        // AMBIL JAWABAN
-        // ==============================
-
-        const reply =
-            typeof result.reply === "string"
-                ? result.reply
-                : "Sip bro.";
-
-
-        const execute =
-            result.execute === true;
-
-
-        let code =
-            typeof result.code === "string"
-                ? result.code
-                : "";
-
-
-        // ==============================
-        // JIKA CUMA CHAT
-        // ==============================
-
-        if (!execute) {
-
-            code = "return";
-
-        }
-
-
-        // ==============================
+        // ================================
         // BERSIHKAN MARKDOWN
-        // ==============================
+        // ================================
+        let output = generatedText;
 
-        code = code
+        output = output
             .replace(/^```lua\s*/i, "")
             .replace(/^```luau\s*/i, "")
             .replace(/^```\s*/i, "")
             .replace(/\s*```$/i, "")
             .trim();
 
+        // ================================
+        // DETEKSI BUILD / CODE
+        // ================================
+        const lowerPrompt = prompt.toLowerCase();
 
-        console.log(
-            "[ROBILD] execute =",
-            execute
-        );
+        const isBuildRequest =
+            lowerPrompt.includes("buat part") ||
+            lowerPrompt.includes("buatkan part") ||
+            lowerPrompt.includes("buat rumah") ||
+            lowerPrompt.includes("buatkan rumah") ||
+            lowerPrompt.includes("buat mobil") ||
+            lowerPrompt.includes("buatkan mobil") ||
+            lowerPrompt.includes("buat pedang") ||
+            lowerPrompt.includes("buatkan pedang") ||
+            lowerPrompt.includes("buat pintu") ||
+            lowerPrompt.includes("buatkan pintu") ||
+            lowerPrompt.includes("buat npc") ||
+            lowerPrompt.includes("buatkan npc") ||
+            lowerPrompt.includes("buat map") ||
+            lowerPrompt.includes("buatkan map") ||
+            lowerPrompt.includes("buat obby") ||
+            lowerPrompt.includes("buatkan obby") ||
+            lowerPrompt.includes("buat script") ||
+            lowerPrompt.includes("buatkan script");
 
-        console.log(
-            "[ROBILD] code length =",
-            code.length
-        );
-
-
-        // ==============================
-        // KIRIM KE ROBLOX
-        // ==============================
-
+        // ================================
+        // RESPONSE KE ROBLOX
+        // ================================
         return res.status(200).json({
+            success: true,
 
-            code: code,
+            // Roblox ServerScript lu sekarang
+            // membaca field "code".
+            code: isBuildRequest ? output : "",
 
-            message: reply
+            // Ini yang ditampilkan di chat.
+            message: output,
 
+            // Informasi tambahan untuk debugging.
+            type: isBuildRequest ? "code" : "chat",
+
+            model: model
         });
-
 
     } catch (error) {
 
-        console.error(
-            "[ROBILD] CRASH:",
-            error
-        );
+        // ================================
+        // ERROR SERVER
+        // ================================
+        console.error("ROBILD API CRASH:", error);
 
-        return res.status(200).json({
-
-            code: "return",
-
-            message:
-                "❌ Robild API Error: " +
-                (
-                    error &&
-                    error.message
-                        ? error.message
-                        : String(error)
-                )
-
+        return res.status(500).json({
+            error: "Robild API mengalami error internal.",
+            details: error?.message || String(error)
         });
-
     }
-
 };
