@@ -10,8 +10,7 @@ module.exports = async (req, res) => {
         const API_KEY = process.env.AI_API_KEY;
 
         if (!API_KEY) {
-            console.error("API Key belum dipasang di Environment Variables!");
-            return res.status(500).json({ error: "API Key tidak ditemukan" });
+            return res.status(500).json({ error: "API Key belum dipasang di Vercel!" });
         }
 
         const systemPrompt = `You are a Roblox Luau code generator engine named Robild.
@@ -22,8 +21,9 @@ Rules:
 3. Always set Anchored = true for all created parts.
 4. Output ONLY raw executable Luau code text. DO NOT wrap in markdown formatting (NO \`\`\`lua or \`\`\`), DO NOT add intro/outro comments or explanations.`;
 
+        // Menggunakan endpoint gemini-2.0-flash
         const response = await axios.post(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${API_KEY}`,
             {
                 contents: [{
                     parts: [
@@ -31,25 +31,16 @@ Rules:
                         { text: `User Prompt: ${prompt}` }
                     ]
                 }]
-            },
-            { headers: { 'Content-Type': 'application/json' } }
+            }
         );
 
-        const candidates = response.data?.candidates;
-        if (!candidates || candidates.length === 0) {
-            console.error("Google AI tidak mengembalikan jawaban:", JSON.stringify(response.data));
-            return res.status(500).json({ error: "AI tidak merespon" });
-        }
-
-        let luauCode = candidates[0].content.parts[0].text;
+        let luauCode = response.data.candidates[0].content.parts[0].text;
         luauCode = luauCode.replace(/```lua/g, '').replace(/```/g, '').trim();
 
         return res.status(200).json({ code: luauCode });
     } catch (err) {
-        // Cetak detail error dari Google ke log Vercel
-        const errorDetail = err.response ? err.response.data : err.message;
-        console.error("Error Detail Gemini:", JSON.stringify(errorDetail));
-        return res.status(500).json({ error: "Gagal memproses AI", detail: errorDetail });
+        console.error("Error Detail Gemini:", err.response ? err.response.data : err.message);
+        return res.status(500).json({ error: "Gagal memproses AI" });
     }
 };
 
