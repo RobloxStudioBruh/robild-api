@@ -1,5 +1,5 @@
 module.exports = async (req, res) => {
-    // Set Header CORS agar Roblox tidak terhalang
+    // Set Header CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -17,7 +17,7 @@ module.exports = async (req, res) => {
         const API_KEY = process.env.AI_API_KEY;
 
         if (!API_KEY) {
-            return res.status(500).json({ error: "API Key (AI_API_KEY) belum dipasang di Vercel!" });
+            return res.status(500).json({ error: "API Key tidak ditemukan di Vercel" });
         }
 
         const systemPrompt = `You are a Roblox Luau code generator engine named Robild.
@@ -28,45 +28,33 @@ Rules:
 3. Always set Anchored = true for all created parts.
 4. Output ONLY raw executable Luau code text. DO NOT wrap in markdown formatting (NO \`\`\`lua or \`\`\`), DO NOT add intro/outro comments or explanations.`;
 
-        // Menggunakan Endpoint REST API v1beta Gemini 1.5 Flash
         const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
 
         const response = await fetch(url, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                contents: [
-                    {
-                        role: 'user',
-                        parts: [
-                            { text: `${systemPrompt}\n\nUser Request: ${prompt || 'buatkan part'}` }
-                        ]
-                    }
-                ]
+                contents: [{
+                    parts: [{ text: `${systemPrompt}\n\nUser Request: ${prompt || 'buatkan part'}` }]
+                }]
             })
         });
 
         const data = await response.json();
 
         if (!response.ok) {
-            console.error("Google AI Error Response:", data);
-            const msg = data.error?.message || "Error dari Google API";
-            return res.status(response.status).json({ error: `Google API Error (${response.status}): ${msg}` });
+            return res.status(response.status).json({ error: data.error?.message || "Google API Error" });
         }
 
         const candidateText = data.candidates?.[0]?.content?.parts?.[0]?.text;
         if (!candidateText) {
-            return res.status(500).json({ error: "Gemini tidak mengembalikan teks kode." });
+            return res.status(500).json({ error: "Respon AI kosong" });
         }
 
-        // Bersihkan markdown formatting
         let luauCode = candidateText.replace(/```lua/g, '').replace(/```/g, '').trim();
 
         return res.status(200).json({ code: luauCode });
     } catch (err) {
-        console.error("Server Crash Error:", err);
-        return res.status(500).json({ error: "Internal Server Error: " + err.message });
+        return res.status(500).json({ error: err.message });
     }
 };
