@@ -28,8 +28,8 @@ Rules:
 3. Always set Anchored = true for all created parts.
 4. Output ONLY raw executable Luau code text. DO NOT wrap in markdown formatting (NO \`\`\`lua or \`\`\`), DO NOT add intro/outro comments or explanations.`;
 
-        // PAKAI JALUR STABIL v1 DENGAN MODEL STABEL gemini-1.5-flash
-        const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
+        // MENGGUNAKAN GEMINI 3.1 FLASH
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash:generateContent?key=${API_KEY}`;
 
         const response = await fetch(url, {
             method: 'POST',
