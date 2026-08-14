@@ -152,7 +152,7 @@ async function askGemini(apiKey, prompt) {
                 },
 
                 thinkingConfig: {
-                    thinkingLevel: "medium"
+                    thinkingLevel: "minimal"
                 }
             }
         })
