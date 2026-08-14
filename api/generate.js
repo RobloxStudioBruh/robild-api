@@ -1,9 +1,9 @@
-const MODEL = "gemini-2.5-flash";
+const MODEL = "gemini-3.6-flash";
 
 const SYSTEM_PROMPT = `
 Kamu adalah Robild, AI builder di dalam Roblox.
 
-Kamu adalah AI yang bebas menentukan jawaban berdasarkan pesan user.
+Kamu adalah AI yang menentukan sendiri jawaban berdasarkan pesan user.
 
 Kamu bisa:
 - ngobrol seperti AI assistant biasa
@@ -15,47 +15,57 @@ Kamu bisa:
 - membuat script Roblox
 - membuat obby
 - membuat UI
+- membuat money system
+- membuat inventory
+- membuat leaderboard
+- membuat NPC
 - membuat mekanik game
+- membuat sistem multiplayer
 - mengubah atau membuat objek Roblox
+- membantu debugging script Roblox
 
 PENTING:
-Jangan menggunakan jawaban hardcode.
-Jangan selalu menjawab dengan kalimat yang sama.
-Jangan menentukan jawaban hanya berdasarkan keyword tertentu.
+- Jangan menggunakan jawaban hardcode.
+- Jangan selalu menjawab dengan kalimat yang sama.
+- Jangan menentukan jawaban hanya berdasarkan keyword tertentu.
+- Kamu sendiri yang menentukan maksud user.
+- Kamu sendiri yang menentukan apakah membutuhkan code atau tidak.
+- Jawab secara natural seperti AI assistant.
 
-Jika user hanya ngobrol atau bertanya:
+JIKA USER HANYA BERTANYA ATAU MENGOBROL:
 - jawab secara natural
 - code harus ""
 
-Jika user meminta sesuatu dibuat di Roblox:
-- buat Lua/Luau code yang sesuai
-- code harus bisa dijalankan oleh ServerScript Roblox
+JIKA USER MEMINTA SESUATU DIBUAT DI ROBLOX:
+- buat Luau code yang sesuai
+- code harus standalone
+- code harus dapat dijalankan oleh ServerScript Roblox
 - message berisi penjelasan singkat
+- jangan hanya membuat Part kecuali memang itu yang diminta
 
-Kamu sendiri yang menentukan apakah permintaan membutuhkan code atau tidak.
-
-ATURAN CODE:
+ATURAN LUAU:
 - Gunakan Luau yang valid.
 - Jangan gunakan markdown code fence.
 - Jangan memasukkan penjelasan ke dalam code.
-- Code harus standalone.
 - Jangan menggunakan require() asset ID yang tidak diketahui.
-- Jangan menggunakan HTTP request.
-- Jangan meminta API key.
-- Jangan menghapus Workspace secara keseluruhan kecuali user memang meminta.
+- Jangan menggunakan HTTP request dari code Roblox yang dibuat.
+- Jangan meminta API key kepada player.
+- Jangan menghapus seluruh Workspace kecuali user memang memintanya.
 - Gunakan Instance.new() jika perlu membuat objek.
 - Berikan nama objek yang jelas.
-- Untuk Part, tentukan property yang diperlukan seperti Size, Position, Anchored, Color, Material, dan Parent.
+- Untuk Part, tentukan property penting seperti Size, Position, Anchored, Color, Material, dan Parent.
 - Code akan dijalankan menggunakan loadstring() di server.
 
-BALAS HANYA JSON VALID:
+BALAS DALAM JSON VALID SAJA.
+
+Format:
 
 {
   "message": "jawaban Robild",
   "code": ""
 }
 
-Jika perlu membuat sesuatu:
+Jika user meminta sesuatu dibuat:
 
 {
   "message": "penjelasan singkat",
@@ -76,7 +86,7 @@ function getText(data) {
 }
 
 function cleanJSON(text) {
-    let result = text.trim();
+    let result = String(text || "").trim();
 
     result = result.replace(/^```json\s*/i, "");
     result = result.replace(/^```\s*/i, "");
@@ -120,8 +130,30 @@ async function askGemini(apiKey, prompt) {
             ],
 
             generationConfig: {
-                temperature: 0.7,
-                responseMimeType: "application/json"
+                responseMimeType: "application/json",
+
+                responseSchema: {
+                    type: "OBJECT",
+
+                    properties: {
+                        message: {
+                            type: "STRING"
+                        },
+
+                        code: {
+                            type: "STRING"
+                        }
+                    },
+
+                    required: [
+                        "message",
+                        "code"
+                    ]
+                },
+
+                thinkingConfig: {
+                    thinkingLevel: "medium"
+                }
             }
         })
     });
@@ -183,6 +215,7 @@ module.exports = async (req, res) => {
     }
 
     if (req.method !== "POST") {
+
         return res.status(405).json({
             error: "Method harus POST."
         });
@@ -206,7 +239,19 @@ module.exports = async (req, res) => {
     // PROMPT
     // =========================
 
-    const prompt = req.body?.prompt;
+    let prompt = req.body?.prompt;
+
+    if (
+        typeof prompt !== "string" &&
+        typeof req.body === "string"
+    ) {
+        try {
+            const parsed = JSON.parse(req.body);
+            prompt = parsed?.prompt;
+        } catch {
+            prompt = "";
+        }
+    }
 
     if (
         typeof prompt !== "string" ||
@@ -219,7 +264,7 @@ module.exports = async (req, res) => {
     }
 
     // =========================
-    // GEMINI REQUEST
+    // GEMINI REQUEST + RETRY
     // =========================
 
     try {
@@ -227,7 +272,6 @@ module.exports = async (req, res) => {
         let data = null;
         let lastError = null;
 
-        // Retry jika Gemini sedang overload
         for (let attempt = 0; attempt < 3; attempt++) {
 
             try {
@@ -264,6 +308,7 @@ module.exports = async (req, res) => {
         }
 
         if (!data) {
+
             throw lastError ||
                 new Error(
                     "Gemini tidak memberikan response."
@@ -271,7 +316,7 @@ module.exports = async (req, res) => {
         }
 
         // =========================
-        // AMBIL TEXT AI
+        // AMBIL JAWABAN AI
         // =========================
 
         const rawText = getText(data);
@@ -299,19 +344,18 @@ module.exports = async (req, res) => {
         } catch (error) {
 
             console.error(
-                "[ROBILD] JSON GEMINI:",
+                "[ROBILD] INVALID GEMINI JSON:",
                 rawText
             );
 
             return res.status(502).json({
                 error:
-                    "Response Gemini bukan JSON valid.",
-                raw: rawText
+                    "Response Gemini bukan JSON valid."
             });
         }
 
         // =========================
-        // HASIL AI
+        // HASIL ROBILD
         // =========================
 
         const message =
@@ -325,8 +369,8 @@ module.exports = async (req, res) => {
                 : "";
 
         return res.status(200).json({
-            message: message,
-            code: code
+            message,
+            code
         });
 
     } catch (error) {
