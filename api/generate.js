@@ -17,7 +17,7 @@ module.exports = async (req, res) => {
         const API_KEY = process.env.AI_API_KEY;
 
         if (!API_KEY) {
-            return res.status(500).json({ error: "API Key tidak ditemukan di Vercel" });
+            return res.status(500).json({ error: "API Key (AI_API_KEY) belum dipasang di Vercel!" });
         }
 
         const systemPrompt = `You are a Roblox Luau code generator engine named Robild.
@@ -28,15 +28,23 @@ Rules:
 3. Always set Anchored = true for all created parts.
 4. Output ONLY raw executable Luau code text. DO NOT wrap in markdown formatting (NO \`\`\`lua or \`\`\`), DO NOT add intro/outro comments or explanations.`;
 
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
+        // MENGGUNAKAN MODEL GEMINI 2.0 FLASH TERBARU
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${API_KEY}`;
 
         const response = await fetch(url, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json'
+            },
             body: JSON.stringify({
-                contents: [{
-                    parts: [{ text: `${systemPrompt}\n\nUser Request: ${prompt || 'buatkan part'}` }]
-                }]
+                contents: [
+                    {
+                        role: 'user',
+                        parts: [
+                            { text: `${systemPrompt}\n\nUser Request: ${prompt || 'buatkan part'}` }
+                        ]
+                    }
+                ]
             })
         });
 
@@ -48,12 +56,13 @@ Rules:
 
         const candidateText = data.candidates?.[0]?.content?.parts?.[0]?.text;
         if (!candidateText) {
-            return res.status(500).json({ error: "Respon AI kosong" });
+            return res.status(500).json({ error: "Gemini tidak mengembalikan teks kode." });
         }
 
+        // Bersihkan formatting markdown jika ada
         let luauCode = candidateText.replace(/```lua/g, '').replace(/```/g, '').trim();
 
-        return res.status(200).json({ code: luauCode });
+        return res.status(200).json({ code: luauCode, message: "Sip bro, udah gue buat ya!" });
     } catch (err) {
         return res.status(500).json({ error: err.message });
     }
