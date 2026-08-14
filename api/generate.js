@@ -1,17 +1,12 @@
 module.exports = async (req, res) => {
-    // =========================
-    // CORS
-    // =========================
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-    // OPTIONS / preflight
     if (req.method === "OPTIONS") {
         return res.status(200).end();
     }
 
-    // Hanya POST
     if (req.method !== "POST") {
         return res.status(405).json({
             error: "Method Not Allowed"
@@ -31,59 +26,61 @@ module.exports = async (req, res) => {
         }
 
         // =========================
-        // BODY
+        // PROMPT
         // =========================
-        const body = req.body || {};
-        const prompt = body.prompt;
+        const prompt = req.body?.prompt;
 
         if (!prompt || typeof prompt !== "string") {
             return res.status(400).json({
-                error: "Prompt tidak ditemukan."
+                error: "Prompt kosong atau tidak valid."
             });
         }
 
         // =========================
-        // SYSTEM PROMPT ROBILD
+        // PROMPT ROBILD
         // =========================
         const systemPrompt = `
-You are Robild, an AI assistant and Roblox Luau code generator.
+You are Robild, an AI inside a Roblox game.
 
-You receive commands from a Roblox player.
+The player can talk to you or ask you to create things in Roblox.
 
-If the player asks a normal question, answer normally.
+IMPORTANT:
+You MUST always return executable Roblox Luau code.
 
-If the player asks you to create or modify something in Roblox,
-generate valid Roblox Luau code that performs the requested action.
+If the player is only chatting, return valid Luau code that does nothing,
+such as:
 
-For building requests:
+return
 
-1. Create a Model named AI_Build.
-2. Parent AI_Build to workspace.
-3. Put created objects inside AI_Build.
-4. Every created BasePart must have Anchored = true.
-5. Build around Vector3.new(0, 10, 0).
-6. Use valid Roblox Luau.
-7. Do not use fake APIs.
+If the player asks to create something, generate the required Roblox Luau code.
+
+Rules for building:
+
+1. Create a Model named "AI_Build".
+2. Parent the Model to workspace.
+3. Put all created objects inside AI_Build.
+4. Every BasePart must have Anchored = true.
+5. Place the build around Vector3.new(0, 10, 0).
+6. Use only real Roblox Luau APIs.
+7. Do not use require() for external assets.
 8. Do not use Markdown.
 9. Do not use code fences.
-10. Return only executable Luau code when the request is a Roblox building request.
+10. Return ONLY executable Luau code.
+11. Never return explanations outside the Luau code.
 
 Player request:
 ${prompt}
 `;
 
         // =========================
-        // GEMINI MODEL
+        // GEMINI
         // =========================
         const MODEL = "gemini-3.6-flash";
 
         const url =
             `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
 
-        // =========================
-        // REQUEST KE GEMINI
-        // =========================
-        const response = await fetch(url, {
+        const geminiResponse = await fetch(url, {
             method: "POST",
 
             headers: {
@@ -108,52 +105,110 @@ ${prompt}
         // =========================
         // BACA RESPONSE
         // =========================
-        const data = await response.json();
+        const data = await geminiResponse.json();
 
-        console.log("Gemini status:", response.status);
+        console.log(
+            "Robild Gemini Status:",
+            geminiResponse.status
+        );
 
         // =========================
         // GEMINI ERROR
         // =========================
-        if (!response.ok) {
+        if (!geminiResponse.ok) {
+
             console.error(
-                "Gemini API Error:",
+                "Gemini Error:",
                 JSON.stringify(data)
             );
 
-            return res.status(response.status).json({
-                error:
-                    data?.error?.message ||
-                    "Gemini API Error."
+            return res.status(200).json({
+                code: "return",
+                message:
+                    "Gemini Error " +
+                    geminiResponse.status +
+                    ": " +
+                    (
+                        data?.error?.message ||
+                        "Unknown Gemini error"
+                    )
             });
         }
 
         // =========================
-        // AMBIL TEXT
+        // CEK CANDIDATE
         // =========================
-        const parts =
-            data?.candidates?.[0]?.content?.parts || [];
+        const candidate = data?.candidates?.[0];
 
-        const candidateText = parts
-            .map(part => part?.text || "")
-            .join("")
-            .trim();
+        if (!candidate) {
 
-        if (!candidateText) {
             console.error(
-                "Gemini tidak memberikan text:",
+                "Tidak ada candidate:",
                 JSON.stringify(data)
             );
 
-            return res.status(500).json({
-                error: "Gemini tidak mengembalikan jawaban."
+            return res.status(200).json({
+                code: "return",
+                message: "Robild: Gemini tidak memberikan candidate."
+            });
+        }
+
+        // =========================
+        // CEK FINISH REASON
+        // =========================
+        if (
+            candidate.finishReason &&
+            candidate.finishReason !== "STOP"
+        ) {
+
+            console.warn(
+                "Gemini Finish Reason:",
+                candidate.finishReason
+            );
+
+            return res.status(200).json({
+                code: "return",
+                message:
+                    "Robild tidak bisa menyelesaikan permintaan. " +
+                    "Reason: " +
+                    candidate.finishReason
+            });
+        }
+
+        // =========================
+        // AMBIL SEMUA TEXT PART
+        // =========================
+        const parts =
+            candidate?.content?.parts || [];
+
+        const textParts = parts
+            .filter(part => typeof part?.text === "string")
+            .map(part => part.text);
+
+        const candidateText =
+            textParts.join("\n").trim();
+
+        // =========================
+        // JIKA TIDAK ADA TEXT
+        // =========================
+        if (!candidateText) {
+
+            console.error(
+                "Gemini tidak mengembalikan text:",
+                JSON.stringify(data)
+            );
+
+            return res.status(200).json({
+                code: "return",
+                message:
+                    "Robild: Gemini tidak mengembalikan teks."
             });
         }
 
         // =========================
         // BERSIHKAN MARKDOWN
         // =========================
-        let result = candidateText
+        let luauCode = candidateText
             .replace(/^```lua\s*/i, "")
             .replace(/^```luau\s*/i, "")
             .replace(/^```\s*/i, "")
@@ -161,24 +216,33 @@ ${prompt}
             .trim();
 
         // =========================
-        // KIRIM KE ROBLOX
+        // PASTIKAN ADA CODE
+        // =========================
+        if (!luauCode) {
+            luauCode = "return";
+        }
+
+        // =========================
+        // RESPONSE KE ROBLOX
         // =========================
         return res.status(200).json({
-            code: result,
-            message: "Sip bro, udah gue buat!"
+            code: luauCode,
+            message: "Robild selesai memproses: " + prompt
         });
 
     } catch (error) {
 
         console.error(
-            "Robild API Error:",
+            "Robild generate.js ERROR:",
             error
         );
 
-        return res.status(500).json({
-            error:
-                error?.message ||
-                "Internal Server Error."
+        // Tetap kasih JSON yang bisa dibaca Roblox
+        return res.status(200).json({
+            code: "return",
+            message:
+                "Robild API Error: " +
+                (error?.message || "Unknown error")
         });
     }
 };
