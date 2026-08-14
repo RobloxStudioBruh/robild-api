@@ -9,6 +9,11 @@ module.exports = async (req, res) => {
         const { prompt } = req.body;
         const API_KEY = process.env.AI_API_KEY;
 
+        if (!API_KEY) {
+            console.error("API Key belum dipasang di Environment Variables!");
+            return res.status(500).json({ error: "API Key tidak ditemukan" });
+        }
+
         const systemPrompt = `You are a Roblox Luau code generator engine named Robild.
 Task: Write valid, working Roblox Luau code to create 3D objects described in the user prompt in game.Workspace.
 Rules:
@@ -21,17 +26,30 @@ Rules:
             `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`,
             {
                 contents: [{
-                    parts: [{ text: `${systemPrompt}\n\nUser Prompt: ${prompt}` }]
+                    parts: [
+                        { text: systemPrompt },
+                        { text: `User Prompt: ${prompt}` }
+                    ]
                 }]
-            }
+            },
+            { headers: { 'Content-Type': 'application/json' } }
         );
 
-        let luauCode = response.data.candidates[0].content.parts[0].text;
+        const candidates = response.data?.candidates;
+        if (!candidates || candidates.length === 0) {
+            console.error("Google AI tidak mengembalikan jawaban:", JSON.stringify(response.data));
+            return res.status(500).json({ error: "AI tidak merespon" });
+        }
+
+        let luauCode = candidates[0].content.parts[0].text;
         luauCode = luauCode.replace(/```lua/g, '').replace(/```/g, '').trim();
 
         return res.status(200).json({ code: luauCode });
     } catch (err) {
-        console.error("Error AI Proxy:", err.message);
-        return res.status(500).json({ error: "Gagal memproses AI" });
+        // Cetak detail error dari Google ke log Vercel
+        const errorDetail = err.response ? err.response.data : err.message;
+        console.error("Error Detail Gemini:", JSON.stringify(errorDetail));
+        return res.status(500).json({ error: "Gagal memproses AI", detail: errorDetail });
     }
 };
+
