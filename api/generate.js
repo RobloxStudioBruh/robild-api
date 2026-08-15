@@ -1,17 +1,15 @@
-const MODEL = "gemini-3.5-flash-lite";
+const MODEL = "gemini-3.1-flash-lite";
 
 const SYSTEM_PROMPT = `
 Kamu adalah Robild, AI assistant dan builder untuk Roblox.
 
-BAHASA:
-- Bahasa default kamu adalah Bahasa Indonesia.
-- Jika user menggunakan Bahasa Indonesia, jawab dalam Bahasa Indonesia.
-- Jika user menggunakan Bahasa Inggris, jawab dalam Bahasa Inggris.
-- Jika user menggunakan bahasa lain, usahakan mengikuti bahasa user.
-- Jangan menerjemahkan pesan user kecuali diminta.
-- Bahasa pada "message" harus mengikuti bahasa user.
+Gunakan bahasa yang sama dengan user.
+Jika user menggunakan Bahasa Indonesia, jawab Bahasa Indonesia.
+Jika user menggunakan English, jawab English.
 
-KAMU BISA:
+Kamu bebas menentukan jawaban berdasarkan permintaan user.
+
+Kamu bisa:
 - ngobrol
 - menjawab pertanyaan
 - menjelaskan sesuatu
@@ -27,52 +25,44 @@ KAMU BISA:
 - membuat script Roblox
 - membuat sistem multiplayer
 - membantu debugging Roblox
-- membuat atau mengubah objek Roblox
 
-PENTING:
-- Jangan menggunakan jawaban hardcode.
-- Jangan selalu menjawab dengan kalimat yang sama.
-- Jangan menentukan jawaban hanya berdasarkan keyword.
-- Kamu sendiri yang menentukan maksud user.
-- Kamu sendiri yang menentukan apakah user membutuhkan code atau tidak.
-- Jawab secara natural seperti AI assistant.
+Jangan menggunakan jawaban hardcode.
+Jangan menentukan jawaban berdasarkan keyword tertentu.
+Kamu sendiri yang menentukan apakah user membutuhkan code atau hanya jawaban.
 
-JIKA USER HANYA BERTANYA ATAU MENGOBROL:
-- Jawab secara natural.
-- code harus string kosong.
+Jika user hanya bertanya atau ngobrol:
+- berikan jawaban natural
+- code harus string kosong
 
-JIKA USER MEMINTA SESUATU DIBUAT DI ROBLOX:
-- Buat Luau yang valid.
-- Code harus standalone.
-- Code harus dapat dijalankan menggunakan loadstring() di server.
-- message berisi penjelasan singkat.
-- Buat hanya hal yang diminta user.
-- Kamu boleh membuat objek pendukung jika memang diperlukan.
+Jika user meminta sesuatu dibuat di Roblox:
+- buat Luau yang valid
+- code harus standalone
+- code harus dapat dijalankan menggunakan loadstring() di server
+- message berisi penjelasan singkat
+- buat hanya apa yang diminta user
+- boleh membuat objek pendukung jika memang diperlukan
 
 ATURAN LUAU:
-- Gunakan Luau yang valid.
 - Jangan gunakan markdown code fence.
 - Jangan memasukkan penjelasan ke dalam code.
 - Jangan menggunakan require() dengan asset ID yang tidak diketahui.
 - Jangan menggunakan HTTP request.
 - Jangan meminta API key.
-- Jangan menghapus seluruh Workspace kecuali user memang memintanya.
+- Jangan menghapus seluruh Workspace kecuali diminta.
 - Gunakan Instance.new() bila diperlukan.
 - Berikan nama objek yang jelas.
-- Untuk Part, tentukan property penting seperti Size, Position, Anchored, Color, Material, dan Parent.
+- Untuk Part, tentukan Size, Position, Anchored, Color, Material, dan Parent bila diperlukan.
 - Code akan dijalankan di server Roblox.
 
 BALAS HANYA DENGAN JSON VALID.
 
 Format:
-
 {
   "message": "jawaban natural dari Robild",
   "code": ""
 }
 
 Jika user meminta sesuatu dibuat:
-
 {
   "message": "penjelasan singkat dari Robild",
   "code": "kode Luau"
@@ -82,23 +72,21 @@ Jangan menambahkan teks di luar JSON.
 `;
 
 function getText(data) {
-    const parts =
-        data?.candidates?.[0]?.content?.parts || [];
-
-    return parts
-        .filter(part => typeof part.text === "string")
-        .map(part => part.text)
-        .join("");
+    return (
+        data?.candidates?.[0]?.content?.parts
+            ?.filter(p => typeof p.text === "string")
+            ?.map(p => p.text)
+            ?.join("") || ""
+    );
 }
 
 function cleanJSON(text) {
-    let result = String(text || "").trim();
-
-    result = result.replace(/^```json\s*/i, "");
-    result = result.replace(/^```\s*/i, "");
-    result = result.replace(/\s*```$/i, "");
-
-    return result.trim();
+    return String(text || "")
+        .trim()
+        .replace(/^```json\s*/i, "")
+        .replace(/^```\s*/i, "")
+        .replace(/\s*```$/i, "")
+        .trim();
 }
 
 async function askGemini(apiKey, prompt) {
@@ -107,7 +95,7 @@ async function askGemini(apiKey, prompt) {
 
     const timeout = setTimeout(() => {
         controller.abort();
-    }, 15000);
+    }, 20000);
 
     try {
 
@@ -115,15 +103,12 @@ async function askGemini(apiKey, prompt) {
             `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
 
         const response = await fetch(url, {
-
             method: "POST",
 
             headers: {
                 "Content-Type": "application/json",
                 "x-goog-api-key": apiKey
             },
-
-            signal: controller.signal,
 
             body: JSON.stringify({
 
@@ -138,7 +123,6 @@ async function askGemini(apiKey, prompt) {
                 contents: [
                     {
                         role: "user",
-
                         parts: [
                             {
                                 text: prompt
@@ -149,15 +133,12 @@ async function askGemini(apiKey, prompt) {
 
                 generationConfig: {
 
-                    responseMimeType:
-                        "application/json",
+                    responseMimeType: "application/json",
 
                     responseSchema: {
-
                         type: "OBJECT",
 
                         properties: {
-
                             message: {
                                 type: "STRING"
                             },
@@ -177,9 +158,12 @@ async function askGemini(apiKey, prompt) {
                         thinkingLevel: "minimal"
                     },
 
-                    maxOutputTokens: 4096
+                    maxOutputTokens: 2048
                 }
-            })
+
+            }),
+
+            signal: controller.signal
         });
 
         const body = await response.text();
@@ -187,60 +171,30 @@ async function askGemini(apiKey, prompt) {
         let data;
 
         try {
-
             data = JSON.parse(body);
-
         } catch {
-
-            const error = new Error(
+            throw new Error(
                 `Response Gemini bukan JSON. HTTP ${response.status}`
             );
-
-            error.status = response.status;
-
-            throw error;
         }
 
         if (!response.ok) {
-
-            const error = new Error(
+            throw new Error(
                 data?.error?.message ||
                 `Gemini HTTP ${response.status}`
             );
-
-            error.status = response.status;
-
-            throw error;
         }
 
         return data;
 
-    } catch (error) {
-
-        if (error.name === "AbortError") {
-
-            const timeoutError = new Error(
-                "Gemini timeout setelah 15 detik."
-            );
-
-            timeoutError.status = 504;
-
-            throw timeoutError;
-        }
-
-        throw error;
-
     } finally {
 
         clearTimeout(timeout);
+
     }
 }
 
 module.exports = async (req, res) => {
-
-    // =========================
-    // CORS
-    // =========================
 
     res.setHeader(
         "Access-Control-Allow-Origin",
@@ -257,55 +211,29 @@ module.exports = async (req, res) => {
         "Content-Type"
     );
 
-    // =========================
-    // OPTIONS
-    // =========================
-
     if (req.method === "OPTIONS") {
         return res.status(204).end();
     }
 
-    // =========================
-    // METHOD
-    // =========================
-
     if (req.method !== "POST") {
-
         return res.status(405).json({
             error: "Method harus POST."
         });
     }
 
-    // =========================
-    // API KEY
-    // =========================
-
-    const apiKey =
-        process.env.GEMINI_API_KEY ||
-        process.env.AI_API_KEY;
+    const apiKey = process.env.AI_API_KEY;
 
     if (!apiKey) {
-
         return res.status(500).json({
             error:
-                "GEMINI_API_KEY belum dipasang di Vercel Environment Variables."
+                "AI_API_KEY belum dipasang di Vercel Environment Variables."
         });
     }
 
-    // =========================
-    // PROMPT
-    // =========================
-
-    let prompt = "";
+    let prompt = req.body?.prompt;
 
     if (
-        req.body &&
-        typeof req.body.prompt === "string"
-    ) {
-
-        prompt = req.body.prompt;
-
-    } else if (
+        typeof prompt !== "string" &&
         typeof req.body === "string"
     ) {
 
@@ -314,82 +242,33 @@ module.exports = async (req, res) => {
             const parsed =
                 JSON.parse(req.body);
 
-            if (
-                typeof parsed?.prompt === "string"
-            ) {
-                prompt = parsed.prompt;
-            }
+            prompt = parsed?.prompt;
 
         } catch {
 
             prompt = "";
+
         }
     }
 
-    prompt = prompt.trim();
-
-    if (!prompt) {
+    if (
+        typeof prompt !== "string" ||
+        prompt.trim() === ""
+    ) {
 
         return res.status(400).json({
             error: "Prompt kosong."
         });
     }
 
-    // =========================
-    // GEMINI
-    // =========================
-
     try {
 
-        let data;
+        const data = await askGemini(
+            apiKey,
+            prompt.trim()
+        );
 
-        try {
-
-            // Request pertama
-            data = await askGemini(
-                apiKey,
-                prompt
-            );
-
-        } catch (firstError) {
-
-            /*
-             Retry hanya untuk error sementara.
-             Tidak memakai 3x retry supaya Robild
-             tidak terasa menggantung lama.
-            */
-
-            const retryable =
-                [
-                    429,
-                    500,
-                    502,
-                    503,
-                    504
-                ].includes(
-                    firstError.status
-                );
-
-            if (!retryable) {
-                throw firstError;
-            }
-
-            await new Promise(resolve => {
-                setTimeout(resolve, 300);
-            });
-
-            data = await askGemini(
-                apiKey,
-                prompt
-            );
-        }
-
-        // =========================
-        // AMBIL JAWABAN GEMINI
-        // =========================
-
-        const rawText =
-            getText(data);
+        const rawText = getText(data);
 
         if (!rawText) {
 
@@ -398,10 +277,6 @@ module.exports = async (req, res) => {
                     "Gemini tidak mengembalikan jawaban."
             });
         }
-
-        // =========================
-        // PARSE JSON
-        // =========================
 
         let result;
 
@@ -412,10 +287,10 @@ module.exports = async (req, res) => {
                     cleanJSON(rawText)
                 );
 
-        } catch (error) {
+        } catch {
 
             console.error(
-                "[ROBILD] INVALID GEMINI JSON:",
+                "[ROBILD] INVALID JSON:",
                 rawText
             );
 
@@ -425,27 +300,18 @@ module.exports = async (req, res) => {
             });
         }
 
-        // =========================
-        // VALIDASI HASIL
-        // =========================
-
-        const message =
-            typeof result?.message === "string"
-                ? result.message
-                : "";
-
-        const code =
-            typeof result?.code === "string"
-                ? result.code
-                : "";
-
-        // =========================
-        // RESPONSE
-        // =========================
-
         return res.status(200).json({
-            message: message,
-            code: code
+
+            message:
+                typeof result.message === "string"
+                    ? result.message
+                    : "",
+
+            code:
+                typeof result.code === "string"
+                    ? result.code
+                    : ""
+
         });
 
     } catch (error) {
@@ -455,13 +321,16 @@ module.exports = async (req, res) => {
             error
         );
 
-        return res.status(
-            error.status || 500
-        ).json({
+        const message =
+            error?.name === "AbortError"
+                ? "Gemini terlalu lama merespons."
+                : (
+                    error?.message ||
+                    "Terjadi error pada server."
+                );
 
-            error:
-                error.message ||
-                "Robild gagal menghubungi Gemini."
+        return res.status(500).json({
+            error: message
         });
     }
 };
