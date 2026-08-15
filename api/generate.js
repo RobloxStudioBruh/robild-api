@@ -1,12 +1,12 @@
-const MODEL = "gemini-3.6-flash";
+const MODEL = "gemini-3.5-flash-lite";
 
 const SYSTEM_PROMPT = `
-Kamu adalah Robild, AI assistant dan builder untuk Roblox.
+Kamu adalah Robild, AI assistant dan builder di dalam Roblox.
 
-Kamu bebas menentukan jawaban berdasarkan permintaan user.
+Kamu menentukan sendiri jawaban berdasarkan pesan user.
 
 Kamu bisa:
-- ngobrol
+- ngobrol seperti AI assistant
 - menjawab pertanyaan
 - menjelaskan sesuatu
 - membuat Part
@@ -21,47 +21,54 @@ Kamu bisa:
 - membuat script Roblox
 - membuat sistem multiplayer
 - membantu debugging Roblox
+- membuat dan mengubah objek Roblox
 
-Jangan menggunakan jawaban hardcode.
-Jangan menentukan jawaban hanya berdasarkan keyword.
-Kamu sendiri yang menentukan apakah user membutuhkan code atau hanya jawaban.
+JANGAN:
+- menggunakan jawaban hardcode
+- selalu menjawab dengan kalimat yang sama
+- menentukan jawaban hanya berdasarkan keyword
+- meminta API key dari user
+- menggunakan HTTP request dalam code Roblox
+- menggunakan require() dengan asset ID yang tidak diketahui
+- menghapus seluruh Workspace kecuali user meminta
 
-Jika user hanya bertanya atau ngobrol:
-- berikan jawaban natural
-- code harus berupa string kosong
+Kamu sendiri menentukan apakah user membutuhkan code atau hanya jawaban.
 
-Jika user meminta sesuatu dibuat di Roblox:
+JIKA USER HANYA BERTANYA / MENGOBROL:
+- jawab natural
+- code harus ""
+
+JIKA USER MEMINTA SESUATU DIBUAT DI ROBLOX:
 - buat Luau yang valid
 - code harus standalone
-- code harus dapat dijalankan menggunakan loadstring() di server
-- message berisi penjelasan singkat
-- buat hanya apa yang diminta user, tetapi kamu boleh membuat objek pendukung jika memang diperlukan
+- code harus dapat dijalankan oleh ServerScript menggunakan loadstring()
+- message berisi jawaban natural dari Robild
+- buat hanya hal yang diminta user
+- jika diperlukan, kamu boleh membuat objek pendukung
 
 ATURAN LUAU:
 - Jangan gunakan markdown code fence.
 - Jangan memasukkan penjelasan ke dalam code.
-- Jangan menggunakan require() dengan asset ID yang tidak diketahui.
-- Jangan menggunakan HTTP request.
-- Jangan meminta API key.
-- Jangan menghapus seluruh Workspace kecuali diminta.
-- Gunakan Instance.new() bila diperlukan.
+- Gunakan Instance.new() jika diperlukan.
 - Berikan nama objek yang jelas.
-- Untuk Part, tentukan property yang diperlukan seperti Size, Position, Anchored, Color, Material, dan Parent.
-- Code akan dijalankan di server Roblox.
+- Untuk Part, gunakan property yang diperlukan seperti Size, Position, Anchored, Color, Material, dan Parent.
+- Jangan membuat code yang membutuhkan API key.
+- Jangan menggunakan HTTP request.
+- Code harus aman untuk dijalankan di server Roblox.
 
-BALAS HANYA DENGAN JSON VALID.
+BALAS HANYA DALAM JSON VALID.
 
-Format:
+FORMAT:
 
 {
-  "message": "jawaban natural dari Robild",
+  "message": "jawaban Robild",
   "code": ""
 }
 
-Jika user meminta sesuatu dibuat:
+JIKA PERLU MEMBUAT SESUATU:
 
 {
-  "message": "penjelasan singkat dari Robild",
+  "message": "penjelasan singkat",
   "code": "kode Luau"
 }
 
@@ -93,83 +100,119 @@ async function askGemini(apiKey, prompt) {
     const url =
         `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
 
-    const response = await fetch(url, {
-        method: "POST",
+    // Timeout 15 detik
+    const controller = new AbortController();
 
-        headers: {
-            "Content-Type": "application/json",
-            "x-goog-api-key": apiKey
-        },
+    const timeout = setTimeout(() => {
+        controller.abort();
+    }, 15000);
 
-        body: JSON.stringify({
-            systemInstruction: {
-                parts: [
-                    {
-                        text: SYSTEM_PROMPT
-                    }
-                ]
+    try {
+
+        const response = await fetch(url, {
+            method: "POST",
+
+            headers: {
+                "Content-Type": "application/json",
+                "x-goog-api-key": apiKey
             },
 
-            contents: [
-                {
-                    role: "user",
+            signal: controller.signal,
+
+            body: JSON.stringify({
+
+                systemInstruction: {
                     parts: [
                         {
-                            text: prompt
+                            text: SYSTEM_PROMPT
                         }
-                    ]
-                }
-            ],
-
-            generationConfig: {
-                responseMimeType: "application/json",
-
-                responseSchema: {
-                    type: "OBJECT",
-
-                    properties: {
-                        message: {
-                            type: "STRING"
-                        },
-
-                        code: {
-                            type: "STRING"
-                        }
-                    },
-
-                    required: [
-                        "message",
-                        "code"
                     ]
                 },
 
-                thinkingConfig: {
-                    thinkingLevel: "minimal"
+                contents: [
+                    {
+                        role: "user",
+
+                        parts: [
+                            {
+                                text: prompt
+                            }
+                        ]
+                    }
+                ],
+
+                generationConfig: {
+
+                    responseMimeType:
+                        "application/json",
+
+                    responseSchema: {
+                        type: "OBJECT",
+
+                        properties: {
+
+                            message: {
+                                type: "STRING"
+                            },
+
+                            code: {
+                                type: "STRING"
+                            }
+                        },
+
+                        required: [
+                            "message",
+                            "code"
+                        ]
+                    },
+
+                    thinkingConfig: {
+                        thinkingLevel: "minimal"
+                    }
                 }
-            }
-        })
-    });
+            })
+        });
 
-    const body = await response.text();
+        const body = await response.text();
 
-    let data;
+        let data;
 
-    try {
-        data = JSON.parse(body);
-    } catch {
-        throw new Error(
-            `Response Gemini bukan JSON. HTTP ${response.status}: ${body}`
-        );
+        try {
+
+            data = JSON.parse(body);
+
+        } catch {
+
+            throw new Error(
+                `Response Gemini bukan JSON. HTTP ${response.status}`
+            );
+        }
+
+        if (!response.ok) {
+
+            throw new Error(
+                data?.error?.message ||
+                `Gemini HTTP ${response.status}`
+            );
+        }
+
+        return data;
+
+    } catch (error) {
+
+        if (error.name === "AbortError") {
+
+            throw new Error(
+                "Gemini timeout setelah 15 detik."
+            );
+        }
+
+        throw error;
+
+    } finally {
+
+        clearTimeout(timeout);
     }
-
-    if (!response.ok) {
-        throw new Error(
-            data?.error?.message ||
-            `Gemini HTTP ${response.status}`
-        );
-    }
-
-    return data;
 }
 
 module.exports = async (req, res) => {
@@ -198,6 +241,7 @@ module.exports = async (req, res) => {
     // =========================
 
     if (req.method === "OPTIONS") {
+
         return res.status(204).end();
     }
 
@@ -206,6 +250,7 @@ module.exports = async (req, res) => {
     // =========================
 
     if (req.method !== "POST") {
+
         return res.status(405).json({
             error: "Method harus POST."
         });
@@ -215,9 +260,11 @@ module.exports = async (req, res) => {
     // API KEY
     // =========================
 
-    const apiKey = process.env.AI_API_KEY;
+    const apiKey =
+        process.env.AI_API_KEY;
 
     if (!apiKey) {
+
         return res.status(500).json({
             error:
                 "AI_API_KEY belum dipasang di Vercel Environment Variables."
@@ -228,16 +275,25 @@ module.exports = async (req, res) => {
     // PROMPT
     // =========================
 
-    let prompt = req.body?.prompt;
+    let prompt =
+        req.body?.prompt;
 
+    // Jika body dikirim sebagai string
     if (
         typeof prompt !== "string" &&
         typeof req.body === "string"
     ) {
+
         try {
-            const parsed = JSON.parse(req.body);
-            prompt = parsed?.prompt;
+
+            const parsed =
+                JSON.parse(req.body);
+
+            prompt =
+                parsed?.prompt;
+
         } catch {
+
             prompt = "";
         }
     }
@@ -246,6 +302,7 @@ module.exports = async (req, res) => {
         typeof prompt !== "string" ||
         prompt.trim() === ""
     ) {
+
         return res.status(400).json({
             error: "Prompt kosong."
         });
@@ -253,21 +310,22 @@ module.exports = async (req, res) => {
 
     // =========================
     // GEMINI
-    // TANPA RETRY
     // =========================
 
     try {
 
-        const data = await askGemini(
-            apiKey,
-            prompt.trim()
-        );
+        const data =
+            await askGemini(
+                apiKey,
+                prompt.trim()
+            );
 
         // =========================
-        // AMBIL TEXT
+        // AMBIL TEXT GEMINI
         // =========================
 
-        const rawText = getText(data);
+        const rawText =
+            getText(data);
 
         if (!rawText) {
 
@@ -281,15 +339,17 @@ module.exports = async (req, res) => {
         // PARSE JSON
         // =========================
 
-        const cleaned = cleanJSON(rawText);
+        const cleaned =
+            cleanJSON(rawText);
 
         let result;
 
         try {
 
-            result = JSON.parse(cleaned);
+            result =
+                JSON.parse(cleaned);
 
-        } catch (error) {
+        } catch {
 
             console.error(
                 "[ROBILD] GEMINI RAW RESPONSE:",
@@ -303,7 +363,7 @@ module.exports = async (req, res) => {
         }
 
         // =========================
-        // HASIL ROBILD
+        // MESSAGE
         // =========================
 
         const message =
@@ -311,14 +371,25 @@ module.exports = async (req, res) => {
                 ? result.message
                 : "";
 
+        // =========================
+        // CODE
+        // =========================
+
         const code =
             typeof result.code === "string"
                 ? result.code
                 : "";
 
+        // =========================
+        // RESPONSE KE ROBLOX
+        // =========================
+
         return res.status(200).json({
+
             message: message,
+
             code: code
+
         });
 
     } catch (error) {
@@ -329,9 +400,11 @@ module.exports = async (req, res) => {
         );
 
         return res.status(500).json({
+
             error:
                 error.message ||
                 "Terjadi error saat menghubungi Gemini."
+
         });
     }
 };
